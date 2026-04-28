@@ -68,7 +68,8 @@ Write all 10 sentences in this exact format.
 Plain text only. No numbers. No asterisks. No dashes."""
 
     raw = ask_gemini(prompt, system=system, max_tokens=2048)
-
+    print(f"DEBUG RAW RESPONSE: {raw}")
+    send_message(f"DEBUG:\n{raw[:1000]}")
     # Parse sentences from response
     sentences = []
     current = {}
