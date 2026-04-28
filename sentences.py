@@ -1,70 +1,30 @@
-"""
-sentences.py
-Generates and sends 10 real English sentences every evening.
-Sentences are real, natural, intermediate level — mix of casual and professional.
-Also stores them for flashcard review.
-"""
-
-import json
 from datetime import datetime, date
 from ai import ask_gemini
 from telegram_helper import send_message
 from storage import save_batch, get_total_count
 
 
-# Rotate topic focus daily so sentences stay fresh and varied
 DAILY_TOPICS = [
     "starting and ending conversations naturally",
     "expressing opinions and agreeing or disagreeing politely",
-    "asking for help or clarification at work",
-    "talking about plans, schedules, and future events",
-    "apologizing, thanking, and being polite in social situations",
-    "expressing feelings and emotions naturally",
-    "talking about problems and offering solutions",
-    "casual small talk about weather, weekends, and daily life",
-    "professional workplace communication and meetings",
-    "storytelling, sharing news, and updating someone",
-    "phone and video call phrases",
-    "shopping, ordering food, and everyday errands",
+    "asking for help or clarification",
+    "talking about plans and future events",
+    "apologizing and thanking people",
+    "expressing feelings and emotions",
+    "talking about problems and solutions",
+    "casual small talk about daily life",
     "making suggestions and invitations",
-    "expressing surprise, excitement, and reactions",
+    "storytelling and sharing news",
+    "phone and video call conversations",
+    "shopping and everyday errands",
+    "expressing surprise and reactions",
+    "talking about the past and memories",
 ]
 
 
 def get_todays_topic():
     day = date.today().toordinal()
     return DAILY_TOPICS[day % len(DAILY_TOPICS)]
-
-
-def parse_sentences(text: str) -> list:
-    """Parse the AI response into a clean list of sentence objects."""
-    sentences = []
-    lines = text.strip().split("\n")
-
-    current = {}
-    for line in lines:
-        line = line.strip()
-        if not line:
-            continue
-
-        # Detect numbered sentence line like "1. I'll get right on it."
-        if line and line[0].isdigit() and ". " in line[:4]:
-            if current:
-                sentences.append(current)
-            parts = line.split(". ", 1)
-            if len(parts) == 2:
-                current = {"sentence": parts[1].strip(), "when": "", "example": ""}
-
-        elif line.lower().startswith("when:") or line.lower().startswith("use when:"):
-            current["when"] = line.split(":", 1)[1].strip()
-
-        elif line.lower().startswith("example:"):
-            current["example"] = line.split(":", 1)[1].strip()
-
-    if current:
-        sentences.append(current)
-
-    return sentences[:10]
 
 
 def send_daily_sentences():
@@ -74,46 +34,73 @@ def send_daily_sentences():
     total = get_total_count()
 
     system = """You are an English conversation coach helping an intermediate 
-English speaker living in Victoria, Canada improve their natural speaking skills.
-You teach real sentences that native speakers actually use every day.
-Never use asterisks, underscores, or markdown. Plain text only."""
+English speaker living in Victoria, Canada improve their speaking skills.
+
+Your student understands common words and can hold basic conversations.
+They want to sound more natural, like people in everyday movies and TV shows.
+
+Rules:
+- Use clear natural English at intermediate level
+- Not too simple like a textbook, not too advanced like formal writing
+- No slang, no idioms that are hard to guess
+- No business or academic language
+- Sentences real people say in normal daily life
+- Think of the English level in shows like Friends or Modern Family
+- Plain text only, no special characters"""
 
     prompt = f"""Today's topic: {topic}
 Date: {date_str}
 
-Generate exactly 10 real, natural English sentences that an intermediate speaker 
-can memorize and use in real daily conversations. 
+Write exactly 10 natural English sentences for an intermediate speaker.
+Each sentence should be useful in real daily life situations.
 
-These sentences should:
-- Sound completely natural, like something from a movie or real conversation
-- Be useful immediately in everyday life in Canada
-- Mix casual and professional situations
-- Be intermediate level, not too simple and not too complex
-- Cover the topic: {topic}
+Use EXACTLY this format for each sentence, nothing else:
 
-For each sentence write EXACTLY in this format:
+SENTENCE: I have a lot going on right now, can we talk later?
+WHEN: When you are busy and someone wants to talk
+EXAMPLE: A friend calls you during a busy afternoon
 
-1. [The sentence]
-When: [One short phrase describing when to use it]
-Example: [A very short example situation, max 10 words]
+SENTENCE: Sorry, I did not quite catch that. Could you say it again?
+WHEN: When you did not hear or understand someone
+EXAMPLE: In a noisy place or on the phone
 
-2. [The sentence]
-When: [One short phrase]
-Example: [Short situation]
-
-Continue for all 10 sentences.
-
-Plain text only. No special characters."""
+Write all 10 sentences in this exact format.
+Plain text only. No numbers. No asterisks. No dashes."""
 
     raw = ask_gemini(prompt, system=system, max_tokens=2048)
-    sentences = parse_sentences(raw)
 
-    # Build the Telegram message
+    # Parse sentences from response
+    sentences = []
+    current = {}
+
+    for line in raw.split("\n"):
+        line = line.strip()
+        if not line:
+            continue
+
+        if line.upper().startswith("SENTENCE:"):
+            if current.get("sentence"):
+                sentences.append(current)
+                current = {}
+            current["sentence"] = line.split(":", 1)[1].strip()
+
+        elif line.upper().startswith("WHEN:"):
+            current["when"] = line.split(":", 1)[1].strip()
+
+        elif line.upper().startswith("EXAMPLE:"):
+            current["example"] = line.split(":", 1)[1].strip()
+
+    if current.get("sentence"):
+        sentences.append(current)
+
+    sentences = sentences[:10]
+
+    # Build message
     lines = [
         f"Evening English - {date_str}",
         f"Topic: {topic.title()}",
-        f"Total sentences in your collection: {total + len(sentences)}",
-        f"{'─' * 30}",
+        f"Collection so far: {total + len(sentences)} sentences",
+        "─" * 30,
         ""
     ]
 
@@ -128,10 +115,8 @@ Plain text only. No special characters."""
     lines.append("─" * 30)
     lines.append("Send 'review' anytime to practice your full collection!")
 
-    message = "\n".join(lines)
-
     # Save to storage
-    save_batch(date_str, sentences)
+    if sentences:
+        save_batch(date_str, sentences)
 
-    # Send to Telegram
-    send_message(message)
+    send_message("\n".join(lines))
