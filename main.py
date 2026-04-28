@@ -24,7 +24,17 @@ def index():
 @app.route("/health")
 def health():
     return "OK", 200
-
+    
+@app.route("/setup")
+def setup_webhook():
+    import requests
+    token = os.getenv("TELEGRAM_TOKEN")
+    render_url = "https://english-sentences-bot.onrender.com/webhook"
+    r = requests.post(
+        f"https://api.telegram.org/bot{token}/setWebhook",
+        json={"url": render_url}
+    )
+    return r.json()
 
 @app.route("/daily")
 def daily():
