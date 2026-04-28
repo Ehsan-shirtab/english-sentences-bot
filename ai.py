@@ -1,7 +1,3 @@
-"""
-ai.py - Google Gemini API wrapper
-"""
-
 import os
 import time
 import requests
@@ -17,11 +13,23 @@ def ask_gemini(prompt: str, system: str = None, max_tokens: int = 2048) -> str:
     if not GEMINI_API_KEY:
         return "GEMINI_API_KEY not set."
 
-    full_prompt = f"{system}\n\n{prompt}" if system else prompt
+    # Keep it simple — combine system and prompt into one
+    if system:
+        full_prompt = system + "\n\n" + prompt
+    else:
+        full_prompt = prompt
+
+    # Remove any special characters that might break the request
+    full_prompt = full_prompt.encode("utf-8", errors="ignore").decode("utf-8")
 
     headers = {"Content-Type": "application/json"}
     body = {
-        "contents": [{"parts": [{"text": full_prompt}]}],
+        "contents": [
+            {
+                "role": "user",
+                "parts": [{"text": full_prompt}]
+            }
+        ],
         "generationConfig": {
             "maxOutputTokens": max_tokens,
             "temperature": 0.9,
@@ -47,6 +55,13 @@ def ask_gemini(prompt: str, system: str = None, max_tokens: int = 2048) -> str:
                 print(f"Rate limited. Waiting {wait}s...")
                 time.sleep(wait)
                 continue
+            elif status == 400:
+                # Print full error for debugging
+                try:
+                    print(f"400 error details: {r.text}")
+                    return f"Gemini 400 error: {r.text[:200]}"
+                except:
+                    return f"Gemini API error 400: {e}"
             return f"Gemini API error {status}: {e}"
 
         except Exception as e:
