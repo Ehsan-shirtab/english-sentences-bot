@@ -5,6 +5,7 @@ from storage import save_batch, get_total_count
 
 
 DAILY_TOPICS = [
+    # Daily Conversations
     "starting and ending conversations naturally",
     "expressing opinions and agreeing or disagreeing politely",
     "asking for help or clarification",
@@ -19,6 +20,58 @@ DAILY_TOPICS = [
     "shopping and everyday errands",
     "expressing surprise and reactions",
     "talking about the past and memories",
+    # Social Situations
+    "meeting someone new and introducing yourself",
+    "talking at a party or social gathering",
+    "giving and receiving compliments",
+    "comforting someone who is sad or stressed",
+    "celebrating good news with someone",
+    "catching up with a friend you have not seen in a while",
+    "making and cancelling plans with friends",
+    "talking about hobbies and interests",
+    "recommending a movie, book, or restaurant",
+    "disagreeing with someone without being rude",
+    "ending a conversation politely",
+    # Everyday Life in Canada
+    "talking about the weather in Canada",
+    "asking for directions and explaining where to go",
+    "taking public transit and asking about buses",
+    "talking to a neighbour",
+    "at the grocery store or supermarket",
+    "at a coffee shop or cafe",
+    "at a restaurant ordering food",
+    "returning something to a store",
+    "at the doctor or pharmacy",
+    "talking about Canadian holidays and events",
+    # Work and Professional
+    "starting and ending a work meeting",
+    "asking your boss or coworker for something",
+    "giving a simple update on your work",
+    "handling a mistake at work professionally",
+    "asking for feedback or an opinion",
+    "welcoming a new coworker",
+    "talking about deadlines and schedules",
+    "saying no politely at work",
+    # Feelings and Personal
+    "talking about being tired or stressed",
+    "expressing excitement about something coming up",
+    "talking about being worried or nervous",
+    "sharing good news about your life",
+    "talking about a difficult situation you are in",
+    "expressing that you need some time alone",
+    "talking about your goals and dreams",
+    "expressing that you changed your mind",
+    # Practical Situations
+    "dealing with a problem at home like repairs",
+    "talking on the phone with a service or company",
+    "asking someone to repeat or slow down",
+    "explaining something you do not know the word for",
+    "asking for a recommendation or advice",
+    "talking about money and prices politely",
+    "making a complaint politely",
+    "asking for permission to do something",
+    "explaining you are running late",
+    "wrapping up a conversation and saying goodbye",
 ]
 
 
@@ -33,11 +86,11 @@ def send_daily_sentences():
     topic = get_todays_topic()
     total = get_total_count()
 
-    system = """You are an English conversation coach helping an intermediate 
+    system = """You are an English conversation coach helping an intermediate
 English speaker living in Victoria, Canada improve their speaking skills.
 
 Your student understands common words and can hold basic conversations.
-They want to sound more natural, like people in everyday movies and TV shows.
+They want to sound more natural like people in everyday movies and TV shows.
 
 Rules:
 - Use clear natural English at intermediate level
@@ -52,47 +105,32 @@ Rules:
 Date: {date_str}
 
 Write exactly 10 natural English sentences for an intermediate speaker.
-Each sentence should be useful in real daily life situations.
+Each sentence should be useful in real daily conversations.
 
-Use EXACTLY this format for each sentence, nothing else:
+Write only the sentences, one per line, nothing else.
+No explanations, no labels, no numbers, no extra text.
+Just 10 sentences, each on its own line.
 
-SENTENCE: I have a lot going on right now, can we talk later?
-WHEN: When you are busy and someone wants to talk
-EXAMPLE: A friend calls you during a busy afternoon
+Example output:
+I have a lot going on right now, can we talk later?
+Sorry, I did not quite catch that. Could you say it again?
+Could you give me a hand with this?
 
-SENTENCE: Sorry, I did not quite catch that. Could you say it again?
-WHEN: When you did not hear or understand someone
-EXAMPLE: In a noisy place or on the phone
-
-Write all 10 sentences in this exact format.
-Plain text only. No numbers. No asterisks. No dashes."""
+Plain text only. Just the 10 sentences. Nothing else."""
 
     raw = ask_gemini(prompt, system=system, max_tokens=2048)
-    print(f"DEBUG RAW RESPONSE: {raw}")
-    send_message(f"DEBUG:\n{raw[:1000]}")
-    # Parse sentences from response
-    sentences = []
-    current = {}
 
+    # Parse sentences
+    sentences = []
     for line in raw.split("\n"):
         line = line.strip()
         if not line:
             continue
-
         if line.upper().startswith("SENTENCE:"):
-            if current.get("sentence"):
-                sentences.append(current)
-                current = {}
-            current["sentence"] = line.split(":", 1)[1].strip()
-
-        elif line.upper().startswith("WHEN:"):
-            current["when"] = line.split(":", 1)[1].strip()
-
-        elif line.upper().startswith("EXAMPLE:"):
-            current["example"] = line.split(":", 1)[1].strip()
-
-    if current.get("sentence"):
-        sentences.append(current)
+            line = line.split(":", 1)[1].strip()
+        # Skip any lines that look like labels or headers
+        if len(line) > 10 and not line.endswith(":"):
+            sentences.append({"sentence": line, "when": "", "example": ""})
 
     sentences = sentences[:10]
 
@@ -107,12 +145,8 @@ Plain text only. No numbers. No asterisks. No dashes."""
 
     for i, s in enumerate(sentences, 1):
         lines.append(f"{i}. {s['sentence']}")
-        if s.get("when"):
-            lines.append(f"   When: {s['when']}")
-        if s.get("example"):
-            lines.append(f"   Example: {s['example']}")
-        lines.append("")
 
+    lines.append("")
     lines.append("─" * 30)
     lines.append("Send 'review' anytime to practice your full collection!")
 
