@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from sentences import send_daily_sentences
 from review import handle_review
 from telegram_helper import send_message
+from storage import register_user
 
 load_dotenv()
 
@@ -24,7 +25,8 @@ def index():
 @app.route("/health")
 def health():
     return "OK", 200
-    
+
+
 @app.route("/setup")
 def setup_webhook():
     import requests
@@ -35,6 +37,7 @@ def setup_webhook():
         json={"url": render_url}
     )
     return r.json()
+
 
 @app.route("/daily")
 def daily():
@@ -63,6 +66,9 @@ def webhook():
         if not text or not chat_id:
             return jsonify({"ok": True})
 
+        # Register new user automatically
+        register_user(chat_id)
+
         if text.lower() in ["/review", "review", "/flashcard", "flashcard"]:
             handle_review(chat_id)
         elif text.lower() in ["/help", "help", "/start", "start"]:
@@ -78,7 +84,8 @@ def webhook():
             )
         else:
             send_message(
-                "Send 'review' to practice random sentences from your collection!",
+                "Send 'review' to practice random sentences from your collection!\n"
+                "Your daily sentences arrive every evening automatically.",
                 chat_id=chat_id
             )
 
