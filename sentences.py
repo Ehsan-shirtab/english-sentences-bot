@@ -1,7 +1,10 @@
 from datetime import datetime, date
 from ai import ask_gemini
 from telegram_helper import send_message
-from storage import save_batch, get_total_count
+from storage import save_batch, get_total_count, get_all_user_ids, load_all
+import os
+
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 
 DAILY_TOPICS = [
@@ -72,6 +75,46 @@ DAILY_TOPICS = [
     "asking for permission to do something",
     "explaining you are running late",
     "wrapping up a conversation and saying goodbye",
+    "starting and ending conversations naturally",
+    "expressing opinions and agreeing or disagreeing politely",
+    "asking for help or clarification",
+    "talking about plans and future events",
+    "apologizing and thanking people",
+    "expressing feelings and emotions",
+    "talking about problems and solutions",
+    "casual small talk about daily life",
+    "making suggestions and invitations",
+    "storytelling and sharing news",
+    "phone and video call conversations",
+    "shopping and everyday errands",
+    "expressing surprise and reactions",
+    "talking about the past and memories",
+    "meeting someone new and introducing yourself",
+    "giving and receiving compliments",
+    "comforting someone who is sad or stressed",
+    "catching up with a friend you have not seen in a while",
+    "making and cancelling plans with friends",
+    "talking about hobbies and interests",
+    "recommending a movie book or restaurant",
+    "disagreeing with someone without being rude",
+    "talking about the weather in Canada",
+    "asking for directions",
+    "at a coffee shop or cafe",
+    "at a restaurant ordering food",
+    "returning something to a store",
+    "at the doctor or pharmacy",
+    "talking about being tired or stressed",
+    "expressing excitement about something",
+    "talking about being worried or nervous",
+    "sharing good news about your life",
+    "expressing that you changed your mind",
+    "asking for permission to do something",
+    "explaining you are running late",
+    "wrapping up a conversation and saying goodbye",
+    "talking about your goals and dreams",
+    "making a complaint politely",
+    "asking for a recommendation or advice",
+    "talking about money and prices politely",
 ]
 
 
@@ -80,21 +123,15 @@ def get_todays_topic():
     return DAILY_TOPICS[day % len(DAILY_TOPICS)]
 
 
-def send_daily_sentences():
-    today = datetime.now()
-    date_str = today.strftime("%B %d, %Y")
-    topic = get_todays_topic()
-    total = get_total_count()
+def generate_sentences(topic: str, date_str: str) -> tuple:
+    """Generate 10 sentences and return raw response and parsed sentences."""
 
-    system = """You are an English conversation coach helping an intermediate
-English speaker living in Victoria, Canada improve their speaking skills.
-
-Your student understands common words and can hold basic conversations.
-They want to sound more natural like people in everyday movies and TV shows.
+    system = """You are an English conversation coach helping intermediate
+English speakers improve their natural speaking skills.
 
 Rules:
 - Use clear natural English at intermediate level
-- Not too simple like a textbook, not too advanced like formal writing
+- Not too simple like a textbook, not too advanced
 - No slang, no idioms that are hard to guess
 - No business or academic language
 - Sentences real people say in normal daily life
@@ -109,18 +146,12 @@ Each sentence should be useful in real daily conversations.
 
 Write only the sentences, one per line, nothing else.
 No explanations, no labels, no numbers, no extra text.
-Just 10 sentences, each on its own line.
-
-Example output:
-I have a lot going on right now, can we talk later?
-Sorry, I did not quite catch that. Could you say it again?
-Could you give me a hand with this?
+Just 10 sentences each on its own line.
 
 Plain text only. Just the 10 sentences. Nothing else."""
 
     raw = ask_gemini(prompt, system=system, max_tokens=2048)
 
-    # Parse sentences
     sentences = []
     for line in raw.split("\n"):
         line = line.strip()
@@ -128,17 +159,17 @@ Plain text only. Just the 10 sentences. Nothing else."""
             continue
         if line.upper().startswith("SENTENCE:"):
             line = line.split(":", 1)[1].strip()
-        # Skip any lines that look like labels or headers
         if len(line) > 10 and not line.endswith(":"):
             sentences.append({"sentence": line, "when": "", "example": ""})
 
-    sentences = sentences[:10]
+    return sentences[:10]
 
-    # Build message
+
+def build_message(sentences: list, topic: str, date_str: str, total: int) -> str:
     lines = [
         f"Evening English - {date_str}",
         f"Topic: {topic.title()}",
-        f"Collection so far: {total + len(sentences)} sentences",
+        f"Collection so far: {total} sentences",
         "─" * 30,
         ""
     ]
@@ -150,8 +181,90 @@ Plain text only. Just the 10 sentences. Nothing else."""
     lines.append("─" * 30)
     lines.append("Send 'review' anytime to practice your full collection!")
 
-    # Save to storage
-    if sentences:
-        save_batch(date_str, sentences)
+    return "\n".join(lines)
 
-    send_message("\n".join(lines))
+
+def send_daily_sentences():
+    """
+    Send daily sentences to ALL registered users.
+    Called by cron job every evening.
+    """
+    today = datetime.now()
+    date_str = today.strftime("%B %d, %Y")
+    topic = get_todays_topic()
+
+    # Generate sentences once — same for everyone today
+    sentences = generate_sentences(topic, date_str)
+
+    if not sentences:
+        print("No sentences generated — skipping")
+        return
+
+    # Get all registered users
+    all_user_ids = get_all_user_ids()
+
+    # Always include the owner
+    if TELEGRAM_CHAT_ID and TELEGRAM_CHAT_ID not in all_user_ids:
+        all_user_ids.append(TELEGRAM_CHAT_ID)
+
+    # If no users yet just send to owner
+    if not all_user_ids:
+        all_user_ids = [TELEGRAM_CHAT_ID] if TELEGRAM_CHAT_ID else []
+
+    for user_id in all_user_ids:
+        try:
+            # Save sentences for this user
+            save_batch(date_str, sentences, user_id=user_id)
+            total = get_total_count(user_id=user_id)
+
+            # Build and send personalized message
+            message = build_message(sentences, topic, date_str, total)
+            send_message(message, chat_id=user_id)
+
+        except Exception as e:
+            print(f"Error sending to user {user_id}: {e}")
+
+Replace main.py webhook section to register new users automatically:
+Find the webhook route and replace it with:
+python@app.route("/webhook", methods=["POST"])
+def webhook():
+    data = request.get_json(silent=True)
+    if not data:
+        return jsonify({"ok": True})
+
+    try:
+        message = data.get("message", {})
+        text = message.get("text", "").strip()
+        chat_id = str(message.get("chat", {}).get("id", ""))
+
+        if not text or not chat_id:
+            return jsonify({"ok": True})
+
+        # Register new user automatically
+        from storage import register_user
+        register_user(chat_id)
+
+        if text.lower() in ["/review", "review", "/flashcard", "flashcard"]:
+            handle_review(chat_id)
+        elif text.lower() in ["/help", "help", "/start", "start"]:
+            send_message(
+                "English Sentences Bot\n\n"
+                "Every evening I send you 10 real English sentences "
+                "to memorize and use in daily conversation.\n\n"
+                "Commands:\n"
+                "review - Get 10 random sentences to practice\n"
+                "help - Show this message\n\n"
+                "Just send 'review' anytime to practice!",
+                chat_id=chat_id
+            )
+        else:
+            send_message(
+                "Send 'review' to practice random sentences from your collection!\n"
+                "Your daily sentences arrive every evening automatically.",
+                chat_id=chat_id
+            )
+
+    except Exception as e:
+        print(f"Webhook error: {e}")
+
+    return jsonify({"ok": True})
