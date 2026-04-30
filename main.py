@@ -72,14 +72,18 @@ def webhook():
         if text.lower() in ["/review", "review", "/flashcard", "flashcard"]:
             handle_review(chat_id)
         elif text.lower() in ["/help", "help", "/start", "start"]:
+            # Get user's first name
+            user_name = message.get("from", {}).get("first_name", "friend")
             send_message(
-                "English Sentences Bot\n\n"
-                "Every evening I send you 10 real English sentences "
-                "to memorize and use in daily conversation.\n\n"
+                f"Hi {user_name}! 👋\n\n"
+                "Welcome to the English Sentences Bot!\n\n"
+                "Every evening I send you 10 real natural English sentences "
+                "to memorize and use in your daily conversations.\n\n"
                 "Commands:\n"
                 "review - Get 10 random sentences to practice\n"
                 "help - Show this message\n\n"
-                "Just send 'review' anytime to practice!",
+                "Your first sentences arrive this evening. "
+                "See you then! 😊",
                 chat_id=chat_id
             )
         else:
